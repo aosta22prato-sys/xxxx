@@ -1,0 +1,6 @@
+{
+  "name": "AI Commerce OS",
+  "description": "Multi-tenant Europe-first SaaS AI Operating System featuring a merchant workbench and platform-level Enterprise Brain.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

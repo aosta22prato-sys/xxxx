@@ -1,0 +1,99 @@
+================================================================================
+AI Commerce OS - Entity Relationship Diagram (ERD) Text Representation
+Database Bridge: Botble CMS & Laravel 12.x Multi-Agent Synergy 底盘
+Reference: ECOS Architecture Lock v1.0
+Updated At: 2026-06-10T12:00:00Z
+================================================================================
+
+This schematic maps the relational flow from incoming webhook triggers (representing CMS events)
+through the ECOS Multi-Agent Isolation and Consent Gateway, leading to secure database writes.
+
+================================================================================
+1. Dynamic ERD Visual Mapping
+================================================================================
+
+   [Botble CMS Core Tables (MySQL)]   |   [AI Commerce OS Multi-Tenant Gateway (MySQL)]
+   ================================   |   =============================================
+                                      |
+   +--------------------+             |
+   |    ec_products     |             |
+   +--------------------+             |
+   | - id (PK)          |             |
+   | - sku (UK) <--------------+      |
+   | - name             |      |      |
+   | - price            |      |      |
+   +--------------------+      |      |
+                               |      |
+   +--------------------+      |      |
+   |    ec_customers    |      |      |
+   +--------------------+      |      |
+   | - id (PK)          |      |      |
+   | - email (UK) <--------+   |      |
+   | - ltv_eur          |  |   |      |
+   +--------------------+  |   |      |
+                           |   |      |
+                           |   |      |
+                           |   |      v
+                           |   |  +-----------------------------------+
+                           |   |  |     botble_webhook_events          |
+                           |   |  +-----------------------------------+
+                           |   |  | PK  id (UUID)                     |
+                           |   |  |     tenant_id                      |
+                           |   |  |     store_id                       |
+                           |   |  |     event_type                     |
+                           |   |  |     payload (JSON) ---------------------+
+                           |   |  |     signature_verified             |    |
+                           |   |  |     processing_status              |    |
+                           |   |  +-----------------------------------+    |
+                           |   |                                           |
+                           |   |                                           |
+                           |   |                                           |
+                           |   |                                           v
+                           |   |  +-----------------------------------+  (Triggers)
+                           |   |  |    botble_collab_synergy_runs     |    |
+                           |   |  +-----------------------------------+    |
+                           |   |  | PK  id (BIGINT UNSIGNED)           |    |
+                           |   +--| FK  event_id ----------------------+----+
+                           |      |     tenant_id                      |
+                           |      |     store_id                       |
+                           |      |     scenario_code                  |
+                           |      |     orchestrator                   |
+                           |      |     run_status                     |
+                           |      |     timeline_steps (JSON)          |
+                           |      +-----------------------------------+
+                           |                        |
+                           |                        | (Generates safe commands)
+                           |                        v
+                           |      +-----------------------------------+
+                           |      |      botble_agent_tasks           |
+                           |      +-----------------------------------+
+                           |      | PK  id (VARCHAR(PK/FK))           |
+                           |      | FK  synergy_run_id                 |
+                           |      |     tenant_id                      |
+                           |      |     store_id                       |
+                           |      |     agent_role                     |
+                           |      |     action_type                    |
+                           |      |     status  ('SUCCESSFUL', etc.)   |
+                           |      |     estimated_cost_eur             |
+                           +------|     rule_signature                 |
+                                  |     denial_reason                  |
+                                  +-----------------------------------+
+
+
+================================================================================
+2. Cardinality & Relationship Constraints
+================================================================================
+
+1. botble_sync_configurations (1) <----> (1) (tenant_id, store_id bound)
+   - Guarantees exactly one endpoint mapping per unique tenant+store pair.
+
+2. botble_webhook_events (1) <----> (0..N) botble_collab_synergy_runs
+   - Each verified webhook event can trigger an active multi-agent synergy run thread
+     aimed at resolving specific operational challenges (e.g. bulk procurement, SEO optimization, CRM email queues).
+
+3. botble_collab_synergy_runs (1) <----> (0..N) botble_agent_tasks
+   - A single collaborative synergy run can result in zero or many secure, audited action commands
+     directed back to the host Botble CMS (or stored in the system's ledger upon passing security criteria).
+
+4. botble_agent_tasks (1) <----> (1) ECOS task_requests
+   - Maps 1-to-1 against the core tenant-isolated safety and limit rules enforcer.

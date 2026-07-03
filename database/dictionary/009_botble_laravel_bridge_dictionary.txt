@@ -1,0 +1,134 @@
+================================================================================
+AI Commerce OS - Data Dictionary Document
+Database Bridge: Botble CMS & Laravel 12.x Multi-Agent Synergy 底盘
+Reference: ECOS Architecture Lock v1.0
+Updated At: 2026-06-10T12:00:00Z
+================================================================================
+
+This document details the schema definitions, relational integrity rules, and database
+fields utilized to bridge the AI Commerce OS core engines with the standard Laravel 12 /
+Botble CMS e-commerce tables (e.g., `ec_products`, `ec_orders`, `ec_customers`, `ec_taxes`).
+
+--------------------------------------------------------------------------------
+1. Table: botble_sync_configurations
+--------------------------------------------------------------------------------
+Description:
+  Persists the administrative connection settings linking the AI Brain's main
+  Gateway to the live Botble CMS instance. Ensures secure webhook handshaking.
+
+Fields:
+  - id (BIGINT UNSIGNED, Primary Key, Auto Increment)
+      Unique ID for the setting line.
+  - tenant_id (VARCHAR(100), NOT NULL, DEFAULT: 'tenant_default')
+      Europe-First SaaS tenant isolation identifier.
+  - store_id (VARCHAR(100), NOT NULL, DEFAULT: 'store_default')
+      Multi-store boundary parameter.
+  - botble_endpoint (VARCHAR(255), NOT NULL)
+      The target domain / API base URL where Laravel 12.x publishes/receives ECOS Syncs.
+  - hmac_secret_key (VARCHAR(255), NOT NULL)
+      Shared key verified on each POST to prevent cross-tenant request hijacking.
+  - sync_status (VARCHAR(50), NOT NULL, DEFAULT: 'ACTIVE')
+      Connection standing: 'ACTIVE', 'PAUSED', or 'FAILING' (if handshake limits trip).
+  - last_checked_at (TIMESTAMP, NULLABLE)
+      The timestamp of the last successful handshake validation sweep.
+  - created_at (TIMESTAMP, DEFAULT: CURRENT_TIMESTAMP)
+      Creation record date.
+  - updated_at (TIMESTAMP, DEFAULT: CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP)
+      Last setting modification timestamp.
+
+Indices:
+  - UNIQUE UNIQUE_TENANT_STORE: (tenant_id, store_id)
+
+--------------------------------------------------------------------------------
+2. Table: botble_webhook_events
+--------------------------------------------------------------------------------
+Description:
+  Tracks incoming webhooks triggered by physical model occurrences inside Botble CMS
+  (e.g., stock dipping, crude product uploading, VIP customer lapsing).
+
+Fields:
+  - id (VARCHAR(100), Primary Key)
+      Uniquely generated UUID or payload event digest identifier.
+  - tenant_id (VARCHAR(100), NOT NULL)
+      SaaS tenant isolation identifier.
+  - store_id (VARCHAR(100), NOT NULL)
+      Target store identifier.
+  - event_source (VARCHAR(100), NOT NULL, DEFAULT: 'BOTBLE_CMS_WEBHOOK')
+      Origin tracker.
+  - event_type (VARCHAR(150), NOT NULL)
+      Trigger code (e.g., 'ecommerce.product.low_inventory', 'ecommerce.product.created').
+  - payload (JSON, NOT NULL)
+      The raw JSON array or parameters sent by Laravel (contains SKU, stock, prices).
+  - signature_verified (TINYINT(1), NOT NULL, DEFAULT: 0)
+      Secured state. 1 = verified via HMAC signature check; 0 = rejected/unsecured.
+  - processing_status (VARCHAR(50), NOT NULL, DEFAULT: 'PENDING')
+      Progress code: 'PENDING', 'PROCESSING', 'COMPLETED', or 'FAILED'.
+  - received_at (TIMESTAMP, DEFAULT: CURRENT_TIMESTAMP)
+      Incoming dispatch timestamp.
+  - processed_at (TIMESTAMP, NULLABLE)
+      Completion timestamp.
+
+Indices:
+  - INDEX Processing_Events: (processing_status)
+  - INDEX Event_Type: (event_type)
+
+--------------------------------------------------------------------------------
+3. Table: botble_collab_synergy_runs
+--------------------------------------------------------------------------------
+Description:
+  Documents multi-agent synergy operations. Logs how individual intelligence roles
+  (Sophia, Oliver, Fiona, Leo, Grace, Marcus) collaboratively resolve Botble webhooks.
+
+Fields:
+  - id (BIGINT UNSIGNED, Primary Key, Auto Increment)
+      Unique run event ID.
+  - event_id (VARCHAR(100), Foreign Key, NULLABLE)
+      The source webhook code mapping back to `botble_webhook_events.id`.
+  - tenant_id (VARCHAR(100), NOT NULL)
+      SaaS tenant isolation identifier.
+  - store_id (VARCHAR(100), NOT NULL)
+      Target store identifier.
+  - scenario_code (VARCHAR(100), NOT NULL)
+      Synergy scenario type: 'low_inventory', 'new_product_raw', or 'vip_silent'.
+  - orchestrator (VARCHAR(50), NOT NULL, DEFAULT: 'CEO Sophia')
+      The guiding core agent dispatcher.
+  - run_status (VARCHAR(50), NOT NULL, DEFAULT: 'RUNNING')
+      Status code: 'RUNNING', 'SUCCEEDED', or 'FAILED'.
+  - timeline_steps (JSON, NOT NULL)
+      JSON serialized array recording chronological agent actions and dialog logs.
+  - created_at / updated_at (TIMESTAMP, Standard parameters)
+
+Indices:
+  - INDEX Run_Scenario: (scenario_code)
+  - INDEX Run_Status: (run_status)
+
+--------------------------------------------------------------------------------
+4. Table: botble_agent_tasks
+--------------------------------------------------------------------------------
+Description:
+  The secure audit ledger logs for operations sent back to the Botble gateway. Fuses with ECOS
+  Tenant Isolation Guard and Permission Resolver budget checking logic before execution.
+
+Fields:
+  - id (VARCHAR(100), Primary Key)
+      Task UUID mapping directly to `task_requests` in the central ECOS core.
+  - synergy_run_id (BIGINT UNSIGNED, Foreign Key, NULLABLE)
+      References `botble_collab_synergy_runs.id`.
+  - tenant_id / store_id (VARCHAR(100), NOT NULL)
+      Isolation tags ensuring no rogue cross-tenant writes occur.
+  - agent_role (VARCHAR(100), NOT NULL)
+      Agent target role executing the action (e.g., InventoryAgent).
+  - action_type (VARCHAR(150), NOT NULL)
+      Execution action code (e.g., REPLENISH_STOCK, ADJUST_PRICE).
+  - status (VARCHAR(50), NOT NULL, DEFAULT: 'PENDING')
+      Gateway resolution status: 'PENDING_RESOLVE', 'SUCCESSFUL', 'DENIED'.
+  - estimated_cost_eur (DECIMAL(12,4), DEFAULT: '0.0000')
+      The calculated financial budget deduction value.
+  - rule_signature (VARCHAR(120), NOT NULL)
+      Cryptographic governor signature certifying approval.
+  - denial_reason (TEXT, NULLABLE)
+      The explanation block if the request got blocked by limits or tenancy mismatch.
+  - executed_at / created_at (TIMESTAMP parameters)
+
+Indices:
+  - INDEX Task_Gateway_Auth: (tenant_id, store_id, agent_role)

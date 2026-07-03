@@ -1,0 +1,82 @@
+# Execution Kernel - Docker Compose for Development
+# Use: docker-compose up -d
+
+version: '3.8'
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15-alpine
+    container_name: kernel_postgres
+    environment:
+      POSTGRES_DB: kernel_db
+      POSTGRES_USER: kernel
+      POSTGRES_PASSWORD: kernel_change_me
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - kernel_network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U kernel"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Redis (optional, for caching/queue)
+  redis:
+    image: redis:7-alpine
+    container_name: kernel_redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - kernel_network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Kernel API Server (requires Node.js build)
+  kernel-api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: kernel_api
+    environment:
+      NODE_ENV: production
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: kernel_db
+      DB_USER: kernel
+      DB_PASSWORD: kernel_change_me
+      REDIS_URL: redis://redis:6379
+      LOG_LEVEL: INFO
+      PERSISTENCE_ENABLED: "true"
+      AUDIT_ENABLED: "true"
+    ports:
+      - "3000:3000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - kernel_network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/api/kernel/stats"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  redis_data:
+
+networks:
+  kernel_network:
+    driver: bridge

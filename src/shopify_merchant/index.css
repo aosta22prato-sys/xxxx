@@ -1,0 +1,99 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Space+Grotesk:wght@400;500;600&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+}
+
+/* Custom scrollbar and sleek custom styling for B&W minimalist theme */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.1);
+  border-radius: 9px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 0, 0, 0.2);
+}
+
+/* Custom styles for transitions and standard PWA layout */
+body {
+  font-family: var(--font-sans);
+  background-color: #f1f1f1;
+  color: #1a1a1a;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+.shopify-card {
+  background: #ffffff;
+  border: 1px solid #e3e3e3;
+  border-radius: 8px;
+  box-shadow: 0px 2px 5px rgba(0, 0, 0, 0.03), 0px 1px 2px rgba(0, 0, 0, 0.02);
+  transition: box-shadow 0.2s ease, border-color 0.2s ease;
+}
+
+.shopify-card:hover {
+  border-color: #b3b3b3;
+  box-shadow: 0px 6px 14px rgba(0, 0, 0, 0.06), 0px 2px 4px rgba(0, 0, 0, 0.02);
+}
+
+/* 2px gap between card content sections */
+.shopify-card > * + * {
+  margin-top: 2px;
+}
+
+.shopify-btn-primary {
+  background: #1a1a1a;
+  color: #ffffff;
+  border: 1px solid #1a1a1a;
+  border-radius: 6px;
+  padding: 6px 14px;
+  font-weight: 500;
+  font-size: 13px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+  cursor: pointer;
+  transition: all 0.12s ease;
+}
+
+.shopify-btn-primary:hover {
+  background: #000000;
+  border-color: #000000;
+}
+
+.shopify-btn-secondary {
+  background: #ffffff;
+  color: #1a1a1a;
+  border: 1px solid #d1d1d1;
+  border-radius: 6px;
+  padding: 6px 14px;
+  font-weight: 500;
+  font-size: 13px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+  cursor: pointer;
+  transition: all 0.12s ease;
+}
+
+.shopify-btn-secondary:hover {
+  background: #f9f9f9;
+  border-color: #b5b5b5;
+}
+
+.shopify-table-header {
+  font-size: 12px;
+  font-weight: 500;
+  text-transform: none;
+  letter-spacing: normal;
+  color: #616161;
+  background: #f7f7f7;
+  border-bottom: 1px solid #e3e3e3;
+}

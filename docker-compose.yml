@@ -1,0 +1,31 @@
+version: '3.8'
+
+services:
+  # Main Node.js application
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: modaui-app
+    restart: always
+    ports:
+      - "4000:3000"
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - APP_URL=https://deepay.srl
+    volumes:
+      - ./server_db.json:/app/server_db.json
+      - ./data:/app/data
+    networks:
+      - modaui-network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+networks:
+  modaui-network:
+    driver: bridge

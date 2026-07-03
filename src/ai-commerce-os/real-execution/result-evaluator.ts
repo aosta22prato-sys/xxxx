@@ -91,7 +91,7 @@ export class ResultEvaluator {
    * 评估完整的执行循环
    */
   public evaluateCycle(
-    actions: ExecutionResult[],
+    actions: any[],
     oldState: BusinessState,
     newState: BusinessState
   ): CycleEvaluation {

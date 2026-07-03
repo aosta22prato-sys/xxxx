@@ -5,16 +5,31 @@
  */
 
 import { getOllamaService } from '../../services/ollama.service';
+import { GoogleGenAI } from '@google/genai';
 
 export class LLMIntegrator {
   private static instance: LLMIntegrator;
   private ollama: ReturnType<typeof getOllamaService>;
+  private ai: GoogleGenAI | null = null;
   private systemPrompt: string;
 
   private constructor() {
-    console.log('🧠 [LLM Integrator] 初始化 Ollama LLM 集成...');
+    console.log('🧠 [LLM Integrator] 初始化 Ollama/Gemini LLM 集成...');
     this.ollama = getOllamaService();
     this.systemPrompt = this.getDefaultSystemPrompt();
+    
+    const apiKey = process.env.GEMINI_API_KEY;
+    if (apiKey && apiKey !== 'MY_GEMINI_API_KEY' && apiKey.trim() !== '') {
+      try {
+        console.log('🧠 [LLM Integrator] 检测到 GEMINI_API_KEY，启用 Gemini 客户端...');
+        this.ai = new GoogleGenAI({
+          apiKey: apiKey,
+          httpOptions: { headers: { 'User-Agent': 'aistudio-build' } }
+        });
+      } catch (err) {
+        console.error('🧠 [LLM Integrator] 初始化 Gemini 失败:', err);
+      }
+    }
   }
 
   public static getInstance(): LLMIntegrator {
@@ -41,6 +56,7 @@ export class LLMIntegrator {
    * 检查 LLM 服务是否可用
    */
   public async isAvailable(): Promise<boolean> {
+    if (this.ai) return true;
     try {
       return await this.ollama.isAvailable();
     } catch (error) {
@@ -53,6 +69,9 @@ export class LLMIntegrator {
    * 获取可用模型列表
    */
   public async listModels(): Promise<any[]> {
+    if (this.ai) {
+      return [{ name: 'gemini-3.5-flash', details: { parameter_size: 'N/A', family: 'gemini' } }];
+    }
     try {
       return await this.ollama.listModels();
     } catch (error) {
@@ -69,8 +88,41 @@ export class LLMIntegrator {
     model?: string,
     options?: any
   ): Promise<any> {
+    if (this.ai) {
+      try {
+        console.log('🤖 [LLM] 正在执行 Gemini 聊天推理...');
+        const contents = messages
+          .filter(m => m.role !== 'system')
+          .map(m => ({
+            role: m.role === 'assistant' ? 'model' : 'user',
+            parts: [{ text: m.content }]
+          }));
+
+        const systemMessage = messages.find(m => m.role === 'system');
+        const systemInstruction = systemMessage ? systemMessage.content : this.systemPrompt;
+
+        const response = await this.ai.models.generateContent({
+          model: model || 'gemini-3.5-flash',
+          contents: contents,
+          config: {
+            systemInstruction: systemInstruction,
+          }
+        });
+
+        return {
+          message: {
+            role: 'assistant',
+            content: response.text || ''
+          },
+          done: true
+        };
+      } catch (err) {
+        console.error('🤖 [LLM] Gemini chat failed, falling back to Ollama or local:', err);
+      }
+    }
+
     try {
-      console.log('🤖 [LLM] 正在执行推理...');
+      console.log('🤖 [LLM] 正在执行推理 (Ollama)...');
       return await this.ollama.chat(messages, model, options);
     } catch (error) {
       console.error('[LLM] 推理失败:', error);
@@ -86,9 +138,27 @@ export class LLMIntegrator {
     systemPrompt?: string,
     model?: string
   ): Promise<string> {
+    if (this.ai) {
+      try {
+        console.log('🤖 [LLM] 正在执行 Gemini 单次内容生成...');
+        const response = await this.ai.models.generateContent({
+          model: model || 'gemini-3.5-flash',
+          contents: prompt,
+          config: {
+            systemInstruction: systemPrompt || this.systemPrompt,
+          }
+        });
+        if (response.text) {
+          return response.text;
+        }
+      } catch (err) {
+        console.error('🤖 [LLM] Gemini generation failed, falling back to Ollama or local:', err);
+      }
+    }
+
     try {
       const finalSystemPrompt = systemPrompt || this.systemPrompt;
-      console.log('🤖 [LLM] 正在生成内容...');
+      console.log('🤖 [LLM] 正在生成内容 (Ollama)...');
       return await this.ollama.generate(prompt, finalSystemPrompt, model);
     } catch (error) {
       console.error('[LLM] 生成失败，使用本地回退:', error);

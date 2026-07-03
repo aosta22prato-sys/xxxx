@@ -9,6 +9,8 @@
  * - 生成可复用策略
  */
 
+import { LLMIntegrator } from '../llm-integrator';
+
 export interface ExecutionResult {
   id: string;
   timestamp: number;
@@ -83,23 +85,122 @@ export class ReflectionEngine {
     patternMatch?: FailurePattern;
     recommendations: string[];
   }> {
-    console.log(`🔍 [Reflection] Analyzing execution: ${result.id}`);
+    console.log(`🔍 [Reflection Engine] Analyzing execution with LLM-first: ${result.id}`);
     
     // 保存执行历史
     this.executionHistory.set(result.id, result);
     
-    // 核心分析
-    const analysis = this.performRootCauseAnalysis(result);
-    
-    // 识别失败模式
-    const patternMatch = result.success ? undefined : this.identifyFailurePattern(result);
-    
-    // 提取经验教训
-    const newLessons = this.extractLessons(result, analysis);
-    this.lessons.push(...newLessons);
-    
-    // 生成推荐
-    const recommendations = this.generateRecommendations(result, analysis, patternMatch);
+    let analysis: any = null;
+    let lessons: Lesson[] = [];
+    let patternMatch: FailurePattern | undefined = undefined;
+    let recommendations: string[] = [];
+    let reflectionMethod = 'TypeScript Heuristic Rules';
+
+    try {
+      const llm = LLMIntegrator.getInstance();
+      if (await llm.isAvailable()) {
+        console.log('🤖 [LLM-First Reflection] 正在使用大模型对本次执行结果进行深度反思与根因分析...');
+        const prompt = `你是一个多智能体电商系统（AI Commerce OS）的主脑 Reflection Engine。
+请分析以下动作执行结果（Execution Result）并提取深层次的经验、失败规律（Root Cause Pattern）及策略性优化建议（Recommendations）。
+
+【执行目标 (Goal)】:
+${JSON.stringify(result.goal, null, 2)}
+
+【执行动作及结果 (Actions & Success Status)】:
+${JSON.stringify(result.actions, null, 2)}
+执行总体成功状态: ${result.success ? '成功 (SUCCESS)' : '失败 (FAILED)'}
+错误详情: ${result.error || '无'}
+执行耗时: ${result.duration}ms
+
+请根据上述信息进行深层反思，给出并输出符合以下 JSON 格式的深度分析报告，不可包含 Markdown 标记：
+{
+  "rootCause": "关于成功或失败的核心根因分析，不要浮于表面...",
+  "cognitivePatterns": "识别到的行为决策/认知/技术模式，指出可能的规律或重犯风险...",
+  "recommendations": [
+    "针对下一次执行的具体改良、预防、或放大成功的建议 1",
+    "建议 2"
+  ],
+  "lessons": [
+    {
+      "title": "经验总结标题 1",
+      "content": "具体的经验、规律或反思内容 1",
+      "category": "success" | "failure" | "improvement"
+    }
+  ],
+  "confidenceScore": 0.0 ~ 1.0
+}`;
+
+        const responseText = await llm.generate(prompt, "你是一个纯 JSON 格式输出引擎。不要输出任何解释或 markdown，直接输出 JSON。");
+        let cleanText = responseText.trim();
+        if (cleanText.startsWith('```')) {
+          const lines = cleanText.split('\n');
+          if (lines[0].includes('json') || lines[0] === '```') {
+            lines.shift();
+          }
+          if (lines[lines.length - 1] === '```') {
+            lines.pop();
+          }
+          cleanText = lines.join('\n').trim();
+        }
+
+        const parsed = JSON.parse(cleanText);
+        if (parsed) {
+          reflectionMethod = 'Gemini / Ollama LLM Reflection';
+          analysis = {
+            success: result.success,
+            duration: result.duration,
+            overallAssessment: parsed.rootCause,
+            cognitivePatterns: parsed.cognitivePatterns,
+            contributingFactors: [{ type: result.success ? 'success' : 'failure', severity: 'high', description: parsed.rootCause }],
+            impact: result.success ? 'low' : 'high'
+          };
+          recommendations = parsed.recommendations || [];
+          lessons = (parsed.lessons || []).map((l: any, idx: number) => ({
+            id: `lesson_${Date.now()}_llm_${idx}`,
+            title: l.title || 'LLM Lesson',
+            content: l.content || 'N/A',
+            category: l.category || (result.success ? 'success' : 'failure'),
+            context: { goal: result.goal, actions: result.actions },
+            timestamp: Date.now(),
+            applicability: [this.extractGoalType(result.goal)],
+            confidence: parsed.confidenceScore || 0.9
+          }));
+
+          if (!result.success) {
+            patternMatch = {
+              id: `pattern_${Date.now()}`,
+              patternType: this.classifyFailureType(result),
+              description: parsed.cognitivePatterns || 'LLM identified failure signature',
+              occurrences: 1,
+              firstSeen: Date.now(),
+              lastSeen: Date.now(),
+              associatedExecutions: [result.id],
+              suggestedFix: recommendations[0] || 'Review system constraints'
+            };
+            this.failurePatterns.set(patternMatch.id, patternMatch);
+          }
+        }
+      }
+    } catch (err) {
+      console.warn('⚠️ [LLM-First Reflection] AI 反思执行失败，正在回退到硬编码规则模式:', err);
+    }
+
+    // 回退规则
+    if (!analysis) {
+      // 核心分析
+      analysis = this.performRootCauseAnalysis(result);
+      
+      // 识别失败模式
+      patternMatch = result.success ? undefined : this.identifyFailurePattern(result);
+      
+      // 提取经验教训
+      lessons = this.extractLessons(result, analysis);
+      
+      // 生成推荐
+      recommendations = this.generateRecommendations(result, analysis, patternMatch);
+    }
+
+    this.lessons.push(...lessons);
     
     // 更新策略库
     if (result.success) {
@@ -108,9 +209,11 @@ export class ReflectionEngine {
       this.updateStrategiesFromFailure(result, patternMatch);
     }
 
+    console.log(`🧠 [Reflection Engine] Reflection completed using [${reflectionMethod}].`);
+
     return {
       analysis,
-      lessons: newLessons,
+      lessons,
       patternMatch,
       recommendations
     };

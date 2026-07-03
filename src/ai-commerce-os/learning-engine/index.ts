@@ -9,6 +9,7 @@
  */
 
 import { reflectionEngine, ExecutionResult, Lesson } from '../reflection-engine';
+import { LLMIntegrator } from '../llm-integrator';
 
 export interface Case {
   id: string;
@@ -113,7 +114,7 @@ export class LearningSystem {
   /**
    * 从案例中学习
    */
-  private learnFromCase(caseItem: Case) {
+  private async learnFromCase(caseItem: Case) {
     // 更新成功/失败模式记忆
     const patternKey = `pattern:${this.extractGoalPattern(caseItem.goal)}`;
     this.remember(
@@ -127,12 +128,79 @@ export class LearningSystem {
       0.8
     );
 
-    // 根据结果生成决策调整
-    if (caseItem.type === 'success') {
-      this.generatePositiveAdjustments(caseItem);
-    } else {
-      this.generateNegativeAdjustments(caseItem);
+    let learningMethod = 'TypeScript Static Adjustments';
+
+    try {
+      const llm = LLMIntegrator.getInstance();
+      if (await llm.isAvailable()) {
+        console.log('🤖 [LLM-First Learning] 正在通过 AI 提取本次案例的深层自适应决策调整 (Decision Adjustment)...');
+        const prompt = `你是一个电商多智能体自治系统（AI Commerce OS）的智能 Learning System 学习模块。
+请对以下执行案例（Case Item）进行深层机器学习，并返回一份在未来的决策中如何自适应调整系统参数（如：成功概率、风险度、成本上限等）的量化建议。
+
+【案例状态 & 目标 (Goal)】:
+${JSON.stringify(caseItem.goal, null, 2)}
+执行类型: ${caseItem.type.toUpperCase()} (SUCCESS 或 FAILURE)
+
+【执行动作 (Actions)】:
+${JSON.stringify(caseItem.actions, null, 2)}
+
+【执行结果 (Outcome)】:
+${JSON.stringify(caseItem.outcome, null, 2)}
+
+请提取 1-2 项具体的决策参数调整，并只输出符合以下 JSON 格式的数据，不要包含 Markdown 标记：
+[
+  {
+    "description": "简短描述为什么要这样调整",
+    "adjustmentType": "increase_success_probability" | "reduce_risk" | "optimize_cost" | "speed_up",
+    "factor": 0.5 到 1.5 之间的数值因子 (例如：成功则调大，失败则调小降低权重),
+    "reason": "调整的具体学习根源"
+  }
+]`;
+
+        const responseText = await llm.generate(prompt, "你是一个纯 JSON 格式输出引擎。不要输出任何解释或 markdown，直接输出 JSON。");
+        let cleanText = responseText.trim();
+        if (cleanText.startsWith('```')) {
+          const lines = cleanText.split('\n');
+          if (lines[0].includes('json') || lines[0] === '```') {
+            lines.shift();
+          }
+          if (lines[lines.length - 1] === '```') {
+            lines.pop();
+          }
+          cleanText = lines.join('\n').trim();
+        }
+
+        const parsedAdjustments = JSON.parse(cleanText);
+        if (Array.isArray(parsedAdjustments) && parsedAdjustments.length > 0) {
+          parsedAdjustments.forEach((adj: any) => {
+            this.adjustments.push({
+              id: `adj_${Date.now()}_llm_${Math.random().toString(36).substr(2, 5)}`,
+              description: adj.description || 'AI extracted adaptive learning',
+              adjustmentType: adj.adjustmentType || (caseItem.type === 'success' ? 'increase_success_probability' : 'reduce_risk'),
+              factor: adj.factor || (caseItem.type === 'success' ? 1.15 : 0.8),
+              reason: adj.reason || 'Extracted via Gemini Learning Engine',
+              appliedTo: [this.extractGoalPattern(caseItem.goal)],
+              timestamp: Date.now()
+            });
+          });
+          learningMethod = 'Gemini / Ollama LLM Self-Learning';
+          console.log(`🤖 [LLM-First Learning] AI 成功量化了 ${parsedAdjustments.length} 条自愈/自适应策略参数！`);
+        }
+      }
+    } catch (err) {
+      console.warn('⚠️ [LLM-First Learning] AI 自愈学习模块推理失败，正在使用预设学习规则回退:', err);
     }
+
+    if (learningMethod === 'TypeScript Static Adjustments') {
+      // 根据结果生成决策调整
+      if (caseItem.type === 'success') {
+        this.generatePositiveAdjustments(caseItem);
+      } else {
+        this.generateNegativeAdjustments(caseItem);
+      }
+    }
+
+    console.log(`📚 [Learning System] Deep Case-based Learning completed using [${learningMethod}].`);
   }
 
   /**

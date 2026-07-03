@@ -15,6 +15,7 @@ import { toolRegistry } from './tool-registry';
 import { businessStateObserver } from './business-state-observer';
 import { safetyGuard, SafetyValidation } from './safety-guard';
 import { resultEvaluator, CycleEvaluation } from './result-evaluator';
+import { LLMIntegrator } from '../llm-integrator';
 
 export interface ExecutionLog {
   cycleId: string;
@@ -57,7 +58,7 @@ export class RealExecutionEngine {
     ctx: ExecutionContext,
     action: ExecutionAction,
     safetyValidation: SafetyValidation
-  ): Promise<ExecutionResult> {
+  ): Promise<any> {
     const actionStartTime = Date.now();
 
     // 1. 安全检查失败 - 直接拒绝
@@ -167,7 +168,7 @@ export class RealExecutionEngine {
       // PHASE 4: EXECUTE - 执行动作
       // ==========================================
       console.log('\n🚀 [Phase 4] EXECUTE 执行动作');
-      const executionResults: ExecutionResult[] = [];
+      const executionResults: any[] = [];
       let successCount = 0;
 
       for (const action of actions) {
@@ -266,83 +267,155 @@ export class RealExecutionEngine {
     goal: any,
     state: BusinessState
   ): Promise<ExecutionAction[]> {
-    const actions: ExecutionAction[] = [];
+    let actions: ExecutionAction[] = [];
     const baseTime = Date.now();
+    let plannerUsed = 'TypeScript Hardcoded Rules';
 
-    if (goal.type === 'increase-revenue') {
-      // 增加收入的策略
-      actions.push(
-        {
+    try {
+      const llm = LLMIntegrator.getInstance();
+      if (await llm.isAvailable()) {
+        console.log('🤖 [Real-Execution LLM-First Planner] 正在使用大模型推理生成执行步骤...');
+        const prompt = `你是一个电商多智能体自治系统（AI Commerce OS）的主力 Planner 引擎。
+请根据用户的经营目标（Goal）和当前的店铺经营状态（Business State），从以下可用工具库中选择一系列最优的工具动作（Actions），组成执行计划，以实现该目标。
+
+【经营目标 (Goal)】:
+${JSON.stringify(goal, null, 2)}
+
+【当前店铺经营状态 (Business State)】:
+- 月销售额 (Monthly Revenue): ¥${state.revenue.monthly}
+- 利润率 (Profit Margin): ${state.profit.margin.toFixed(2)}%
+- 广告投资回报率 (Ads ROI): ${state.marketing.adsROI.toFixed(2)}
+- 转化率 (Conversion Rate): ${state.orders.conversionRate.toFixed(2)}%
+- 库存总量 (Total Units): ${state.inventory.totalUnits}
+- 仓库容量 (Warehouse Capacity): ${state.inventory.warehouseCapacity}
+
+【可用工具库】:
+1. "generateSalesReport" - 生成销售分析报告。参数: {}
+2. "optimizeAdSpend" - 优化广告投放以提高ROI。参数: { "metric": "ROI" | "conversion" }
+3. "updatePrice" - 调整商品售价。参数: { "productId": string (例如 "top-sku"), "newPrice": number, "reason": string }
+4. "calculateProfitMargin" - 评估财务并计算利润率。参数: { "period": "monthly" | "weekly" }
+5. "triggerLowStockAlert" - 触发库存预警。参数: { "threshold": number }
+6. "forecastInventoryNeeds" - 预测未来30天库存需求。参数: { "days": number }
+7. "segmentCustomers" - 对流失风险客户进行聚类分群。参数: { "criteria": "atrisk" }
+8. "adjustInventory" - 调整或补充库存。参数: { "quantity": number, "reason": string }
+
+【返回格式要求】:
+必须只返回一个 JSON 数组。数组中的每个元素必须符合以下格式，不可包含任何 Markdown 标记或其它多余字符（注意 priority 需要是整数优先级，如 1 (高), 2 (中), 3 (低)）：
+[
+  {
+    "id": "唯一ID",
+    "tool": "工具名称",
+    "params": { ... },
+    "priority": 1 | 2 | 3
+  }
+]`;
+
+        const responseText = await llm.generate(prompt, "你是一个极简格式 JSON 输出引擎。不要输出 markdown，直接输出 JSON。");
+        let cleanText = responseText.trim();
+        if (cleanText.startsWith('```')) {
+          const lines = cleanText.split('\n');
+          if (lines[0].includes('json') || lines[0] === '```') {
+            lines.shift();
+          }
+          if (lines[lines.length - 1] === '```') {
+            lines.pop();
+          }
+          cleanText = lines.join('\n').trim();
+        }
+
+        const parsedActions = JSON.parse(cleanText);
+        if (Array.isArray(parsedActions) && parsedActions.length > 0) {
+          actions = parsedActions.map((act, idx) => ({
+            id: act.id || `${baseTime}-${idx + 1}`,
+            tool: act.tool,
+            params: act.params || {},
+            priority: act.priority || 1
+          }));
+          plannerUsed = 'Gemini / Ollama LLM Reasoner';
+          console.log(`🤖 [Real-Execution LLM-First Planner] 成功用 AI 生成了 ${actions.length} 个动作！`);
+        }
+      }
+    } catch (err) {
+      console.warn('⚠️ [Real-Execution LLM-First Planner] 大模型生成计划失败，正在使用安全规则回退:', err);
+    }
+
+    if (actions.length === 0) {
+      if (goal.type === 'increase-revenue') {
+        // 增加收入的策略
+        actions.push(
+          {
+            id: `${baseTime}-1`,
+            tool: 'generateSalesReport',
+            params: {},
+            priority: 'high',
+          },
+          {
+            id: `${baseTime}-2`,
+            tool: 'optimizeAdSpend',
+            params: { metric: 'ROI' },
+            priority: 'medium',
+          }
+        );
+
+        if (state.orders.conversionRate < 2) {
+          actions.push({
+            id: `${baseTime}-3`,
+            tool: 'updatePrice',
+            params: {
+              productId: 'top-sku',
+              newPrice: 79.99,
+              reason: 'Promotion',
+            },
+            priority: 'low',
+          });
+        }
+      } else if (goal.type === 'increase-profit') {
+        // 增加利润的策略
+        actions.push(
+          {
+            id: `${baseTime}-1`,
+            tool: 'calculateProfitMargin',
+            params: { period: 'monthly' },
+            priority: 'high',
+          }
+        );
+
+        if (state.profit.margin < 30) {
+          actions.push({
+            id: `${baseTime}-2`,
+            tool: 'updatePrice',
+            params: { newPrice: 99.99, reason: 'Margin improvement' },
+            priority: 'medium',
+          });
+        }
+      } else if (goal.type === 'reduce-inventory') {
+        // 减少库存的策略
+        actions.push(
+          {
+            id: `${baseTime}-1`,
+            tool: 'triggerLowStockAlert',
+            params: { threshold: 50 },
+            priority: 'high',
+          },
+          {
+            id: `${baseTime}-2`,
+            tool: 'forecastInventoryNeeds',
+            params: { days: 30 },
+            priority: 'medium',
+          }
+        );
+      } else {
+        // 默认分析动作
+        actions.push({
           id: `${baseTime}-1`,
           tool: 'generateSalesReport',
           params: {},
-          priority: 1,
-        },
-        {
-          id: `${baseTime}-2`,
-          tool: 'optimizeAdSpend',
-          params: { metric: 'ROI' },
-          priority: 2,
-        }
-      );
-
-      if (state.orders.conversionRate < 2) {
-        actions.push({
-          id: `${baseTime}-3`,
-          tool: 'updatePrice',
-          params: {
-            productId: 'top-sku',
-            newPrice: 79.99,
-            reason: 'Promotion',
-          },
-          priority: 3,
+          priority: 'low',
         });
       }
-    } else if (goal.type === 'increase-profit') {
-      // 增加利润的策略
-      actions.push(
-        {
-          id: `${baseTime}-1`,
-          tool: 'calculateProfitMargin',
-          params: { period: 'monthly' },
-          priority: 1,
-        }
-      );
-
-      if (state.profit.margin < 30) {
-        actions.push({
-          id: `${baseTime}-2`,
-          tool: 'updatePrice',
-          params: { newPrice: 99.99, reason: 'Margin improvement' },
-          priority: 2,
-        });
-      }
-    } else if (goal.type === 'reduce-inventory') {
-      // 减少库存的策略
-      actions.push(
-        {
-          id: `${baseTime}-1`,
-          tool: 'triggerLowStockAlert',
-          params: { threshold: 50 },
-          priority: 1,
-        },
-        {
-          id: `${baseTime}-2`,
-          tool: 'forecastInventoryNeeds',
-          params: { days: 30 },
-          priority: 2,
-        }
-      );
-    } else {
-      // 默认分析动作
-      actions.push({
-        id: `${baseTime}-1`,
-        tool: 'generateSalesReport',
-        params: {},
-        priority: 1,
-      });
     }
 
+    console.log(`📋 [RealExecutionEngine] Actions compiled using [${plannerUsed}].`);
     return actions;
   }
 

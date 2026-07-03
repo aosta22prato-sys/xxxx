@@ -15,6 +15,7 @@ import {
 } from './core-interfaces';
 import { toolRegistry } from './tool-registry';
 import { businessStateObserver } from './business-state-observer';
+import { LLMIntegrator } from '../llm-integrator';
 
 export interface ExecutionCycle {
   cycleId: string;
@@ -118,100 +119,176 @@ export class ExecutionEngine {
     state: BusinessState
   ): Promise<ExecutionPlan> {
     const planId = `plan-${Date.now()}`;
-    const actions: ExecutionAction[] = [];
+    let actions: ExecutionAction[] = [];
+    let plannerUsed = 'TypeScript Hardcoded Rules';
 
-    // 根据目标类型生成动作
-    if (goal.type === 'increase-revenue') {
-      // 增加收入的策略
-      if (state.inventory.totalUnits < state.inventory.warehouseCapacity * 0.3) {
-        // 库存不足，需要补货
-        actions.push({
-          tool: 'adjustInventory',
-          params: { quantity: 100, reason: 'Restocking for revenue increase' },
-          priority: 'high',
-        });
-      }
+    try {
+      const llm = LLMIntegrator.getInstance();
+      if (await llm.isAvailable()) {
+        console.log('🤖 [LLM-First Planner] 正在通过大模型生成智能执行计划...');
+        const prompt = `你是一个电商多智能体自治系统（AI Commerce OS）的主力 Planner 引擎。
+请根据用户的经营目标（Goal）和当前的店铺经营状态（Business State），从以下可用工具库中选择一系列最优的工具动作（Actions），组成执行计划，以实现该目标。
 
-      // 优化广告投放
-      if (state.marketing.adsROI < 1) {
-        actions.push({
-          tool: 'optimizeAdSpend',
-          params: { metric: 'ROI' },
-          priority: 'high',
-        });
-      }
+【经营目标 (Goal)】:
+${JSON.stringify(goal, null, 2)}
 
-      // 降价促销
-      if (state.orders.conversionRate < 2) {
-        actions.push({
-          tool: 'updatePrice',
-          params: {
-            productId: 'top-sku',
-            newPrice: 79.99,
-            reason: 'Promotion to increase conversion',
-          },
-          priority: 'medium',
-        });
-      }
-    } else if (goal.type === 'increase-profit') {
-      // 增加利润的策略
-      if (state.profit.margin < 30) {
-        // 增加价格
-        actions.push({
-          tool: 'updatePrice',
-          params: {
-            newPrice: 99.99,
-            reason: 'Margin improvement',
-          },
-          priority: 'high',
-        });
-      }
+【当前店铺经营状态 (Business State)】:
+- 月销售额 (Monthly Revenue): ¥${state.revenue.monthly}
+- 利润率 (Profit Margin): ${state.profit.margin.toFixed(2)}%
+- 广告投资回报率 (Ads ROI): ${state.marketing.adsROI.toFixed(2)}
+- 转化率 (Conversion Rate): ${state.orders.conversionRate.toFixed(2)}%
+- 库存总量 (Total Units): ${state.inventory.totalUnits}
+- 仓库容量 (Warehouse Capacity): ${state.inventory.warehouseCapacity}
 
-      // 减少广告支出
-      if (state.marketing.adsROI < 1.5) {
-        actions.push({
-          tool: 'pauseCampaign',
-          params: { campaignId: 'low-roi-campaign' },
-          priority: 'medium',
-        });
-      }
+【可用工具库】:
+1. "generateSalesReport" - 生成销售分析报告。参数: {}
+2. "optimizeAdSpend" - 优化广告投放以提高ROI。参数: { "metric": "ROI" | "conversion" }
+3. "updatePrice" - 调整商品售价。参数: { "productId": string (例如 "top-sku"), "newPrice": number, "reason": string }
+4. "calculateProfitMargin" - 评估财务并计算利润率。参数: { "period": "monthly" | "weekly" }
+5. "triggerLowStockAlert" - 触发库存预警。参数: { "threshold": number }
+6. "forecastInventoryNeeds" - 预测未来30天库存需求。参数: { "days": number }
+7. "segmentCustomers" - 对流失风险客户进行聚类分群。参数: { "criteria": "atrisk" }
+8. "adjustInventory" - 调整或补充库存。参数: { "quantity": number, "reason": string }
 
-      // 优化库存
-      actions.push({
-        tool: 'forecastInventoryNeeds',
-        params: { days: 30 },
-        priority: 'low',
-      });
-    } else if (goal.type === 'reduce-churn') {
-      // 减少流失的策略
-      actions.push({
-        tool: 'segmentCustomers',
-        params: { criteria: 'atrisk' },
-        priority: 'high',
-      });
-    } else if (goal.description) {
-      // 自然语言目标 - 生成通用动作
-      actions.push(
-        {
-          tool: 'generateSalesReport',
-          params: { period: 'monthly' },
-          priority: 'high',
-        },
-        {
-          tool: 'calculateProfitMargin',
-          params: { period: 'monthly' },
-          priority: 'high',
+【返回格式要求】:
+必须只返回一个 JSON 数组。数组中的每个元素必须符合以下格式，不可包含任何 Markdown 标记或其它多余字符：
+[
+  {
+    "tool": "工具名称",
+    "params": { ... },
+    "priority": "high" | "medium" | "low"
+  }
+]`;
+
+        const responseText = await llm.generate(prompt, "你是一个极简格式 JSON 输出引擎。不要输出 markdown，直接输出 JSON。");
+        // 清理可能包含的 markdown 代码块 ```json
+        let cleanText = responseText.trim();
+        if (cleanText.startsWith('```')) {
+          const lines = cleanText.split('\n');
+          if (lines[0].includes('json') || lines[0] === '```') {
+            lines.shift();
+          }
+          if (lines[lines.length - 1] === '```') {
+            lines.pop();
+          }
+          cleanText = lines.join('\n').trim();
         }
-      );
+
+        const parsedActions = JSON.parse(cleanText);
+        if (Array.isArray(parsedActions) && parsedActions.length > 0) {
+          actions = parsedActions;
+          plannerUsed = 'Gemini / Ollama LLM Reasoner';
+          console.log(`🤖 [LLM-First Planner] 成功用 AI 生成了 ${actions.length} 个动作！`);
+        }
+      }
+    } catch (err) {
+      console.warn('⚠️ [LLM-First Planner] 大模型生成计划失败，正在使用安全规则回退:', err);
     }
 
-    // 确保有至少一个动作
     if (actions.length === 0) {
-      actions.push({
-        tool: 'generateSalesReport',
-        params: {},
-        priority: 'low',
-      });
+      // 根据目标类型生成动作
+      if (goal.type === 'increase-revenue') {
+        // 增加收入的策略
+        if (state.inventory.totalUnits < state.inventory.warehouseCapacity * 0.3) {
+          // 库存不足，需要补货
+          actions.push({
+            id: `${planId}-1`,
+            tool: 'adjustInventory',
+            params: { quantity: 100, reason: 'Restocking for revenue increase' },
+            priority: 'high',
+          });
+        }
+
+        // 优化广告投放
+        if (state.marketing.adsROI < 1) {
+          actions.push({
+            id: `${planId}-2`,
+            tool: 'optimizeAdSpend',
+            params: { metric: 'ROI' },
+            priority: 'high',
+          });
+        }
+
+        // 降价促销
+        if (state.orders.conversionRate < 2) {
+          actions.push({
+            id: `${planId}-3`,
+            tool: 'updatePrice',
+            params: {
+              productId: 'top-sku',
+              newPrice: 79.99,
+              reason: 'Promotion to increase conversion',
+            },
+            priority: 'medium',
+          });
+        }
+      } else if (goal.type === 'increase-profit') {
+        // 增加利润的策略
+        if (state.profit.margin < 30) {
+          // 增加价格
+          actions.push({
+            id: `${planId}-1`,
+            tool: 'updatePrice',
+            params: {
+              newPrice: 99.99,
+              reason: 'Margin improvement',
+            },
+            priority: 'high',
+          });
+        }
+
+        // 减少广告支出
+        if (state.marketing.adsROI < 1.5) {
+          actions.push({
+            id: `${planId}-2`,
+            tool: 'pauseCampaign',
+            params: { campaignId: 'low-roi-campaign' },
+            priority: 'medium',
+          });
+        }
+
+        // 优化库存
+        actions.push({
+          id: `${planId}-3`,
+          tool: 'forecastInventoryNeeds',
+          params: { days: 30 },
+          priority: 'low',
+        });
+      } else if (goal.type === 'reduce-churn') {
+        // 减少流失的策略
+        actions.push({
+          id: `${planId}-1`,
+          tool: 'segmentCustomers',
+          params: { criteria: 'atrisk' },
+          priority: 'high',
+        });
+      } else if (goal.description) {
+        // 自然语言目标 - 生成通用动作
+        actions.push(
+          {
+            id: `${planId}-1`,
+            tool: 'generateSalesReport',
+            params: { period: 'monthly' },
+            priority: 'high',
+          },
+          {
+            id: `${planId}-2`,
+            tool: 'calculateProfitMargin',
+            params: { period: 'monthly' },
+            priority: 'high',
+          }
+        );
+      }
+
+      // 确保有至少一个动作
+      if (actions.length === 0) {
+        actions.push({
+          id: `${planId}-default`,
+          tool: 'generateSalesReport',
+          params: {},
+          priority: 'low',
+        });
+      }
     }
 
     const plan: ExecutionPlan = {
@@ -223,6 +300,7 @@ export class ExecutionEngine {
       estimatedDurationMinutes: actions.length * 2,
     };
 
+    console.log(`📋 [Planner Engine] Plan #${planId} is generated using [${plannerUsed}].`);
     return plan;
   }
 
